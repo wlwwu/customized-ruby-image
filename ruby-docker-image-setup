@@ -1,0 +1,122 @@
+#!/bin/bash
+set -x
+set -e
+Host=$1
+BASE_DIR=`pwd`
+function setup_concourse()
+{
+     port=`netstat -nlp | grep 8080 | cut -d':' -f4 | cut -d' ' -f1`
+     if [ "$port"x != "8080"x ]
+     then
+       cd $BASE_DIR/../Concourse
+       echo "" >> docker-compose.yml
+       echo "    - http_proxy=""http://"$Host":3128/" >> docker-compose.yml
+       echo "    - https_proxy=""http://"$Host":3128/" >> docker-compose.yml
+       echo "    - no_proxy=localhost,127.0.0.1,"$Host >> docker-compose.yml
+       echo "    - CONCOURSE_EXTERNAL_URL="$Host":8080" >> docker-compose.yml
+       docker-compose up -d&
+     fi
+     if [ $? -eq 0 ]
+     then
+        echo "concourse setuped successfully!"
+     else
+        echo "concourse setup failed!"
+     fi
+}
+function setup_artifactory()
+{
+     port=`netstat -nlp | grep 8081 | cut -d':' -f4 | cut -d' ' -f1`
+     if [ "$port"x != "8081"x ]
+     then
+       cd $BASE_DIR/../Artifactory/
+       docker-compose up -d&
+     fi
+     if [ $? -eq 0 ]
+     then
+        echo "artifactory setuped successfully!"
+     else
+        echo "artifactory setup failed!"
+     fi
+}
+
+function  setup_registry()
+{
+     port=`netstat -nlp | grep 5000 | cut -d':' -f4 | cut -d' ' -f1`
+     if [ "$port"x != "5000"x ]
+     then
+       docker run -d -p 5000:5000 --name registry registry:2
+     fi
+     if [ $? -eq 0 ]
+     then
+        echo "registry setuped successfully!"
+     else
+        echo "registry setup failed!"
+     fi
+}
+
+function setup_pivnet_image()
+{
+    image_name=`docker images | grep 5000/pivnet | cut -d' ' -f1`
+    Base_image_name=$Host":5000/pivnet"
+    if [ "$image_name"x != "$Base_image_name"x ]
+    then
+      docker pull pivotalcf/pivnet-resource
+      cd $BASE_DIR/../Dockerfile/
+      cp -r extra/ pivnet_dockerfile/
+      cd pivnet_dockerfile
+      docker build -t  pivnet .
+      docker image tag pivnet $Host:5000/pivnet
+      docker push $Host:5000/pivnet
+    fi
+    if [ $? -eq 0 ]
+    then
+       echo "pivnet image pushed successfully!"
+    else
+       echo "pivnet image pushed failed!"
+    fi
+}
+
+function setup_ruby_image()
+{
+    image_name=`docker images | grep 5000/ruby | cut -d' ' -f1`
+    Base_image_name=$Host":5000/ruby"
+    if [ "$image_name"x != "$Base_image_name"x ]
+    then
+      docker pull ruby
+      cd $BASE_DIR/../Dockerfile/
+      cp -r extra/ ruby_dockerfile/
+      cd ruby_dockerfile
+      docker build -t  ruby .
+      docker image tag ruby $Host:5000/ruby
+      docker push $Host:5000/ruby
+    fi
+    if [ $? -eq 0 ]
+    then
+       echo "ruby image pushed successfully!"
+    else
+       echo "ruby image pushed failed!"
+    fi
+}
+
+function edit_pipeline()
+{
+  #replace default registry
+  sed_regex="s/10.187.215.107/"$Host"/g"
+  sed -i $sed_regex $BASE_DIR/../java-jce-custom-buildpack.yml
+  sed -i $sed_regex $BASE_DIR/../java-oracle-custom-buildpack.yml
+}
+
+function env_prepare()
+{
+    setup_concourse
+    setup_artifactory
+    setup_registry
+    setup_ruby_image
+    setup_pivnet_image
+    edit_pipeline
+}
+
+
+
+
+env_prepare
