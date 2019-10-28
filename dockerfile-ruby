@@ -1,0 +1,15 @@
+FROM ruby
+MAINTAINER linwwu
+ENV http_proxy  'http://10.187.215.107:3128'
+ENV https_proxy 'http://10.187.215.107:3128'
+ENV no_proxy  'localhost'
+RUN echo "nameserver 10.187.48.93" > /etc/resolv.conf
+RUN apt-get update
+RUN apt-get install -y zip unzip screen
+RUN gem install bundle
+RUN gem install nokogiri
+RUN gem install rest-client
+RUN gem install bundler:2.0.2
+ADD extra /etc/ssl/certs
+RUN cp /etc/ssl/certs/* /usr/local/share/ca-certificates/
+RUN update-ca-certificates
